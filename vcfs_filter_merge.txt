@@ -1,0 +1,43 @@
+
+#!/bin/bash 
+
+#PBS -l qos=biocore
+#PBS -l nodes=1:ppn=8
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -l mem=20gb
+
+module load gcc/6.2.0
+module load samtools/1.10
+module load bcftools/1.16.0
+module load tabix/0.2.6
+
+
+#PASS-filter vcf files 
+for file in $(find $yk/vcf_files -type f -name "*vcf.gz"); do
+bcftools view --apply-filters PASS $file -o $yk/cvcfs/"c_"${file:47:50} --threads 10;
+done
+
+#create an array of chromosome numbers
+nos=($(seq 1 1 22))
+for i in ${nos[@]};
+do
+chrs[i]=$"chr"$i;
+done
+
+#convert the array to comma-separated format
+data_string="${chrs[*]}"
+data_string_commas="${data_string//${IFS:0:1}/,}"
+
+
+#clean filtered vcf files
+for file in $(find $yk/cvcfs -type f -name "*filtered.vcf.gz"); do
+bcftools filter $file --regions $data_string_commas,chrX,chrY,chrM 
+--output $yk/fcvcfs/"f_"${file:45:50} --threads 10;
+done
+
+#indexing PASS-filtered and cleaned vcfs
+for file in $(find $yk/fcvcfs -type f -name "*filtered.vcf.gz"); do tabix -p vcf $file; done
+
+#merge PASS-filtered vcfs
+bcftools merge $(find $yk/fcvcfs -type f -name "*filtered.vcf.gz") --output $yk/fcvcfs/filtered_cleaned_merged_vcfs.vcf.gz
