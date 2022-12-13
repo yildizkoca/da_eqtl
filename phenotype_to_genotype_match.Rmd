@@ -1,0 +1,103 @@
+---
+title: "phenotype to genotype match"
+output: html_document
+date: "2022-12-10"
+---
+
+```{bash}
+
+#!/bin/bash
+
+#PBS -l qos=biocore
+#PBS -l nodes=1:ppn=8
+#PBS -l walltime=24:00:00
+#PBS -j oe
+#PBS -l mem=20gb
+
+module load gcc/6.2.0
+module load samtools/1.10
+module load bcftools/1.16.0
+module load tabix/0.2.6
+module load qtltools/1.1
+module load bedtools
+module load htslib/1.10.2
+
+
+
+#run the qtltools mbv function, matching RNA-seq to genome
+for file in $(find $INPUT_DIRECTORY -type f -name "*sortedByCoord.out.bam");
+do QTLtools mbv --bam $file --vcf path/to/filtered_cleaned_merged_vcfs.vcf.gz --filter-mapping-quality 150 --out $OUTPUT_DIRECTORY
+done
+
+```
+
+
+
+```{r}
+
+
+setwd("/Users/yildizkoca/Desktop/projects/deji")
+
+#read combined bamstats data and separate for each RNA-seq sample (102 lines apart)
+bamstats<-read.csv("stats/bamstats/phenotpe_genotype_matcing_stats.csv", sep=",")
+sep<-c(0:100)*102
+bamstats[(sep[1]+1):(sep[2]-1),]
+
+#separate each RNA-seq sample result and save to a list
+list=list()
+l=list()
+names=c()
+for (i in 1:94) {
+  list[[i]]<-bamstats[(sep[i]+1):(sep[i+1]-1),]
+  name<-bamstats[sep[i],1]
+  l[[i]]<-list[[i]][-1,c(1,12,13)]
+  rownames<-l[[i]][,1]
+  l[[i]]<-as.matrix(l[[i]][,-1])
+  l[[i]]<-apply(l[[i]], 2, as.numeric)
+  colnames(l[[i]])<-c("het","hom")
+  rownames(l[[i]])<-rownames
+  names(l)[i]<-name
+}
+names(l)[1]<-"aa01.bamstat.txt" 
+
+
+#match each RNA-seq sample with the max matching genome sample
+df<-data.frame()
+for (i in 1:94) {
+rnaid<-substr(names(l)[i],1,4)
+wgsid1<-names(which(l[[i]][,2]==max(l[[i]][,2]))) 
+wgsid2<-names(which(l[[i]][,1]==max(l[[i]][,1])))
+if (wgsid1 == wgsid2) {
+df[i,1]<-rnaid
+df[i,2]<-wgsid1
+}
+else {
+  df[i,1]<-rnaid
+  df[i,2]<-paste(wgsid1,wgsid2)
+}
+colnames(df)<-c("rna_id", "wgs_id")
+}
+
+
+#read actual labels and combine with sequence match results
+metadata<-read.csv("metadata/eqtl_metadata_sorted.csv")
+metadata<-metadata[, c("wgs_fastq_id","rna_id")]
+metadata<-cbind(gsub("-", "", metadata[,1]), metadata[,2])
+colnames(metadata)<-c("wgs_fastq_id","rna_id")
+cbind(metadata[match(df[,1],metadata[,2]),], df)
+
+write.table(df, file="phenotype_to_genotype_matching2.csv", sep="\t")
+
+
+setwd("/Users/yildizkoca/Desktop/projects/deji/stats/bamstats/pheno_geno_matching_plots")
+
+#plot the sequence match results for each RNA-seq sample
+for (i in 1:94) {
+    g<-ggplot(as.data.frame(l[[i]]), aes(x=het,y=hom)) + geom_point() + theme_minimal() + geom_text_repel(label=rownames(as.data.frame(l[[i]])), size=4) + ggtitle(substr(names(l)[i],1,4))
+    ggsave(g, filename= paste(substr(names(l)[i],1,4),".jpeg",sep=""))
+}
+
+
+
+
+```
