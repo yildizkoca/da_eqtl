@@ -1,0 +1,59 @@
+---
+title: "updating metadata"
+output: html_document
+date: "2022-12-13"
+---
+
+```{r}
+
+setwd("/gpfs/data/bioinformatics/yildizkoca/deji/metadata")
+
+metadata<-read.csv("eqtl_metadata_sorted_updated.csv", sep=",")
+head(metadata)
+labels<-metadata[,c("wgs_fastq_id","rna_id")]
+labels<-cbind(gsub("-", "", labels[,"wgs_fastq_id"]), labels[,"rna_id"])
+colnames(labels)<-c("wgs_fastq_id","rna_id")
+
+setwd("/gpfs/data/bioinformatics/yildizkoca/deji/counts")
+
+bed<-read.table("corrected_fctdata_cpm.bed")
+colnames(bed)<-bed[1,]
+bed<-bed[-1,]
+rm1<-which(colnames(bed)== c("da61"))
+rm2<-which(colnames(bed)== c("da36"))
+rm3<-which(colnames(bed)== c("da56"))
+rm4<-which(colnames(bed)== c("da04"))
+bed<-bed[, c(-rm1,-rm2,-rm3,-rm4)]
+colnames<-colnames(bed)
+
+match<-match(colnames(bed),labels[,"rna_id"])
+match<-match[!is.na(match(colnames,labels[,"rna_id"]))]
+wgsid<-labels[match,"wgs_fastq_id"]
+
+colnames<-c(colnames[1:6],wgsid)
+colnames(bed)<-colnames
+
+write.table(bed, "corrected_fctdata_cpm_wgsid.bed",row.names = F, sep="\t", quote=FALSE) 
+
+```
+
+```{r}
+
+setwd("/gpfs/data/bioinformatics/yildizkoca/deji/metadata")
+
+metadata<-read.csv("eqtl_metadata_sorted_updated.csv", sep=",")
+head(metadata)
+covariates<-metadata[,c("wgs_fastq_id","rna_id","male","race","age")]
+covariates<-cbind(gsub("-", "", covariates[,"wgs_fastq_id"]), covariates[,c(2,3,4,5)])
+
+bed<-read.table("corrected_fctdata_cpm_wgsid.bed")
+colnames(bed)<-bed[1,]
+bed<-bed[-1,]
+match<-match(colnames(bed),covariates[,1])
+match<-match[!is.na(match(colnames(bed),covariates[,1]))]
+covariates<-covariates[match,]
+colnames(covariates)<-c("wgs_fastq_id","rna_id","sex","race","age")
+
+write.table(covariates, "covariates_w_age.txt",row.names = F, sep="\t", quote=FALSE) 
+
+```
