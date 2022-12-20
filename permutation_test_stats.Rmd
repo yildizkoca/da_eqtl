@@ -1,0 +1,113 @@
+---
+title: "permutation_test_stats"
+output: html_document
+date: "2022-12-18"
+---
+
+```{r}
+
+BiocManager::install("ggmanh", lib="/gpfs/data/bioinformatics/yildizkoca/deji/RLibrary")
+library("ggplot2", lib="/gpfs/data/bioinformatics/yildizkoca/RLibrary")
+library("ggmanh", lib="/gpfs/data/bioinformatics/yildizkoca/RLibrary")
+library("qvalue", lib="/gpfs/data/bioinformatics/yildizkoca/RLibrary")
+
+setwd("/gpfs/data/bioinformatics/yildizkoca/deji")
+filenames1<-read.table("filenames/permutation_folders.txt")
+filenames1<-filenames1[c(-6,-17),]
+filenames2<-substr(filenames1, 49, nchar(filenames1))
+
+#read permutation results
+permlist<-list()
+for (i in (1:length(filenames1))) {
+  setwd(filenames1[i])
+  permlist[[i]]<-read.table(paste0(filenames2[i], "_full.txt"), header=FALSE)
+  colnames(permlist[[i]])<-c("pid","chr","start","end","strand","cis_variants","distance","top_variant_id","top_variant_chr","top_variant_start","top_variant_end","df","dummy","k_of_beta", "n_of_beta","nom_P","reg_slope","emp_P","adj_P")
+  }
+head(permlist[[1]])
+names(permlist)<-filenames2
+
+#plot direct method vs beta approximation P-values
+for (i in (1:length(permlist))) {
+  setwd("/gpfs/data/bioinformatics/yildizkoca/deji/perm_results/beta_vs_direct_method_plots")
+  jpeg(paste0(names(permlist)[i],".jpeg"))
+  plot(permlist[[i]]$emp_P, permlist[[i]]$adj_P, xlab="Direct method", ylab="Beta approximation", main=names(permlist)[i]) 
+  dev.off()
+}
+
+#Multiple test-correct P-values and write significant hits
+for (i in (1:length(permlist))) {
+  summary(is.na(permlist[[i]]$adj_P))
+  permlist[[i]]<-permlist[[i]][!(is.na(permlist[[i]]$adj_P)),]
+  permlist[[i]]$qval=qvalue(permlist[[i]]$adj_P)$qvalue
+  dim(permlist[[i]][which(permlist[[i]]$qval <= 0.05), ])
+  dim(permlist[[i]][which(permlist[[i]]$qval <= 0.1), ])
+  setwd("/gpfs/data/bioinformatics/yildizkoca/deji/perm_results/significants")
+  write.table(permlist[[i]][which(permlist[[i]]$qval <= 0.05), ], paste0(names(permlist)[i],".results.genes.significant.txt"), quote=FALSE, row.names=FALSE) 
+}
+
+setwd("/gpfs/data/bioinformatics/yildizkoca/deji")
+filenames3<-read.table("filenames/nominal_folders.txt")
+filenames3<-apply(filenames3, 1, as.character)
+filenames4<-substr(filenames3, 49, nchar(filenames3))
+
+#read nominal results
+nomlist<-list()
+for (i in (1:length(filenames3))) {
+  setwd(filenames3[i])
+  nomlist[[i]]<-read.table(paste0(filenames4[i], "_full.txt"), header=FALSE)
+  colnames(nomlist[[i]])<-c("pid","chr","start","end","strand","cis_variants","distance","variant_id","variant_chr","variant_start","variant_end","nom_P","reg_slope","is.top.variant")
+  }
+head(nomlist[[1]])
+names(nomlist)<-filenames4
+
+#get top nominal P values
+top_nomlist<-list()
+for (i in (1:length(filenames3))) {
+top_nomlist[[i]]<-nomlist[[i]][which(nomlist[[i]][,c("is.top.variant")]==1),]
+print(dim(top_nomlist[[i]]))
+}
+
+ #match permlist and nomlist orders
+ pnames<-names(permlist)
+ nnames<-names(nomlist)
+ nnames<-substr(nnames, 9, nchar(nnames))
+ pnames<- substr(pnames, 13, nchar(pnames))
+
+ permlist[[match(nnames,pnames)[i]]]
+ permlist_match<-permlist[match(nnames,pnames)]
+ 
+ #match permlist and nomlist gene orders
+  permlist_match_match<-list()
+  for (i in (1:length(filenames3))) {
+  match<-match(top_nomlist[[i]][,"pid"], permlist[[i]][,"pid"])
+  permlist_match_match[[i]]<-permlist_match[[i]][match,]
+  }
+ 
+#find the probability of getting nominal P values given k and n parameters of fitted beta distribution of permutation P values
+ top_nom_P<-list()
+ k<-list()
+ n<-list()
+ pbeta<-list()
+ for (i in (1:length(filenames3))) {
+  top_nom_P[[i]]<-top_nomlist[[i]][,"nom_P"]
+  k[[i]]<-permlist_match_match[[i]][,c("k_of_beta")]
+  n[[i]]<-permlist_match_match[[i]][,c("n_of_beta")]
+  pbeta[[i]]<-pbeta(top_nom_P[[i]],k[[i]],n[[i]])
+  top_nomlist[[i]]$adj_P<-pbeta[[i]]
+  write.table(top_nomlist[[i]], paste0(names(nomlist)[i],".top.nomP.txt"), quote=FALSE, row.names=FALSE) 
+}
+ 
+ #write significant results
+ significants_nom<-list()
+ eqtl_hits<-list()
+ for (i in (1:length(filenames3))){
+ significants_nom[[i]]<-top_nomlist[[i]][which(top_nomlist[[i]]$adj_P <= 0.05),]
+ eqtl_hits[i]<-dim(significants_nom[[i]])
+ write.table(significants_nom[[i]], paste0(names(nomlist)[i],".significant.nomP.txt"), quote=FALSE, row.names=FALSE) 
+ }
+ names(eqtl_hits)<-names(nomlist)
+ write.table(eqtl_hits, "eqtl_hits.txt", row.names=FALSE, quote=FALSE)
+
+
+```
+
